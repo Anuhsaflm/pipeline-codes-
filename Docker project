@@ -1,0 +1,71 @@
+pipeline {
+    agent any
+    tools {
+        jdk 'jdk17'
+        nodejs 'nodejs'
+    }
+    environment {
+        SCANNER_HOME = tool 'mysonar'
+    }
+    stages {
+        stage('Clean WS') {
+            steps {
+                cleanWs() // Updated from cleanWS() to cleanWs()
+            }
+        }
+        stage('Code') {
+            steps {
+                git 'https://github.com/Anuhsaflm/Zomato-Project.git'
+            }
+        }
+        stage('CQA') {
+            steps {
+                withSonarQubeEnv('mysonar') {
+                    sh '''$SCANNER_HOME/bin/sonar-scanner \
+                    -Dsonar.projectName=zomato \
+                    -Dsonar.projectKey=zomato'''
+                }
+            }
+        }
+        stage('Build') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        stage ('owasp') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        stage ('dockerimage build') {
+            steps {
+                sh 'docker build -t vinod1290/dell:myproject .'
+            }
+        }
+        stage ('trivy filesystem') {
+            steps {
+                sh 'trivy fs . > trivyfs.txt'
+            }
+        }
+        stage ('imagescan') {
+            steps {
+                sh 'trivy image vinod1290/dell:myproject'
+            }
+        }
+        stage ('docker image push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker12') {
+                      sh 'docker push vinod1290/dell:myproject'
+                    }
+                }
+            }
+        }
+        stage ('container') {
+            steps {
+                sh 'docker run -itd --name cont1 -p 3000:3000 vinod1290/dell:myproject'
+            }
+        }
+    }
+}
